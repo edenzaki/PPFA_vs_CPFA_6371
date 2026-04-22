@@ -61,6 +61,7 @@ class CPFA_controller : public BaseController {
 		bool isHoldingFood;
 		bool isUsingSiteFidelity;
 		bool isGivingUpSearch;
+		bool hasMidRouteShared;
   
 		size_t ResourceDensity;
 		size_t MaxTrailSize;

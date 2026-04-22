@@ -7,6 +7,7 @@ CPFA_controller::CPFA_controller() :
 	isHoldingFood(false),
 	isUsingSiteFidelity(false),
 	isGivingUpSearch(false),
+	hasMidRouteShared(false),
 	ResourceDensity(0),
 	MaxTrailSize(50),
 	SearchTime(0),
@@ -116,6 +117,7 @@ void CPFA_controller::Reset() {
     SearchTime      = 0;
     ResourceDensity = 0;
     collisionDelay = 0;
+    hasMidRouteShared = false;
     
   	LoopFunctions->CollisionTime=0; //qilu 09/26/2016
     
@@ -485,6 +487,24 @@ void CPFA_controller::Returning() {
  //LOG<<"Returning..."<<endl;
 	//SetHoldingFood();
 
+	if(IsHoldingFood()) {
+		// Mid-route pheromone sharing: share trail with any nearby robot within 1 meter, without interrupting the return journey.
+		if(!hasMidRouteShared && !TrailToShare.empty()) {
+			CCI_FootBotProximitySensor::TReadings proximityReadings = proximitySensor->GetReadings();
+			for(size_t i = 0; i < proximityReadings.size(); i++) {
+				if(proximityReadings[i].Value > 0) {
+					// A robot or obstacle is within sensor range — share the pheromone trail and keep moving toward the nest.
+					TrailToShare.push_back(LoopFunctions->NestPosition);
+					argos::Real timeInSeconds = (argos::Real)(SimulationTick() / SimulationTicksPerSecond());
+					Pheromone sharedPheromone(SiteFidelityPosition, TrailToShare, timeInSeconds, LoopFunctions->RateOfPheromoneDecay, ResourceDensity);
+					LoopFunctions->PheromoneList.push_back(sharedPheromone);
+					TrailToShare.pop_back(); // remove the NestPosition we just appended so TrailToShare stays intact for nest-arrival logic
+					hasMidRouteShared = true;
+					break; // one share per return trip
+				}
+			}
+		}
+	}
 	// Are we there yet? (To the nest, that is.)
 	if(IsInTheNest()) {
 		// Based on a Poisson CDF, the robot may or may not create a pheromone
@@ -544,6 +564,7 @@ void CPFA_controller::Returning() {
       }
 
 	isGivingUpSearch = false;
+	hasMidRouteShared = false;
 	CPFA_state = DEPARTING;   
         isHoldingFood = false; 
         travelingTime+=SimulationTick()-startTime;//qilu 10/22
