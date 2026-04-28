@@ -32,6 +32,9 @@ class CPFA_controller : public BaseController {
 		Real FoodDistanceTolerance;
 
 		void SetLoopFunctions(CPFA_loop_functions* lf);
+		void SetRobotID(size_t id);
+		size_t GetRobotID() const;
+		void PheromoneSharing();
   
   size_t     GetSearchingTime();//qilu 09/26/2016
   size_t      GetTravelingTime();//qilu 09/26/2016
@@ -41,6 +44,7 @@ class CPFA_controller : public BaseController {
 
 	private:
   string 			controllerID;//qilu 07/26/2016
+		size_t    RobotID;
 
 		CPFA_loop_functions* LoopFunctions;
 		argos::CRandom::CRNG* RNG;
