@@ -7,6 +7,7 @@ CPFA_controller::CPFA_controller() :
 	isHoldingFood(false),
 	isUsingSiteFidelity(false),
 	isGivingUpSearch(false),
+	hasMidRouteShared(false),
 	ResourceDensity(0),
 	MaxTrailSize(50),
 	SearchTime(0),
@@ -19,7 +20,8 @@ CPFA_controller::CPFA_controller() :
         travelingTime(0),
         startTime(0),
     m_pcLEDs(NULL),
-        updateFidelity(false)
+        updateFidelity(false),
+    RobotID(0)
 {
 }
 
@@ -116,6 +118,7 @@ void CPFA_controller::Reset() {
     SearchTime      = 0;
     ResourceDensity = 0;
     collisionDelay = 0;
+    hasMidRouteShared = false;
     
   	LoopFunctions->CollisionTime=0; //qilu 09/26/2016
     
@@ -258,6 +261,14 @@ void CPFA_controller::SetLoopFunctions(CPFA_loop_functions* lf) {
 		*/
 	}
 
+}
+
+void CPFA_controller::SetRobotID(size_t id) {
+	RobotID = id;
+}
+
+size_t CPFA_controller::GetRobotID() const {
+	return RobotID;
 }
 
 void CPFA_controller::Departing()
@@ -477,6 +488,14 @@ void CPFA_controller::Surveying() {
 		log_output_stream << (GetHeading() - rotation ).SignedNormalize() << ", "  << SearchStepSize << ", "<< rotation << ", " <<  turn_vector << ", " << GetHeading() << ", " << survey_count << endl;
 		log_output_stream.close();
 		*/
+		if(LoopFunctions->IsMessageAvailable(GetRobotID())) {
+			MessageType message = LoopFunctions->ReceiveMessage(GetRobotID());
+			cout << "Robot " << GetId() << " (" << GetRobotID() << ") received pheromone trail to follow at " << message.trail.GetX() << ", " << message.trail.GetY() << endl;
+			PheromonShared = message.trail;
+			isUsingPheromone = true;
+			CPFA_state = SEARCHING;
+			survey_count = 0; // Reset
+		}
 		
 		if(fabs((GetHeading() - rotation).SignedNormalize().GetValue()) < TargetAngleTolerance.GetValue()) survey_count++;
 			//else Keep trying to reach the turning angle
@@ -493,6 +512,40 @@ void CPFA_controller::Surveying() {
 	}
 }
 
+void CPFA_controller::PheromoneSharing() {
+	// Check if there are pheromones to share and if there are nearby robots to share with
+	if(!TrailToShare.empty() && !hasMidRouteShared) { // REFACTOR: It should be able to share the trail to more than one robot, but we need to define decay of the shared location per robot or level, look at PoissonCDF for laying pheromone and maybe add a separate one for sharing pheromone. For now, just share to one robot and then don't share again until the next time it picks up food.
+		// Check for nearby robots within 1 meter
+		argos::CSpace::TMapPerType& footbots = LoopFunctions->GetSpace().GetEntitiesByType("foot-bot");
+		argos::CSpace::TMapPerType::iterator it;
+		for(it = footbots.begin(); it != footbots.end(); ++it) {
+			argos::CFootBotEntity& footBot = *argos::any_cast<argos::CFootBotEntity*>(it->second);
+			if(footBot.GetId() == GetId()) continue; // skip self
+			// GetEmbodiedEntity().GetOriginAnchor().Position gives a CVector3
+			argos::CVector3 otherPos3d = footBot.GetEmbodiedEntity().GetOriginAnchor().Position;
+			argos::CVector2 otherPos2d(otherPos3d.GetX(), otherPos3d.GetY());
+			if(argos::Distance(GetPosition(), otherPos2d) < 1.0) {
+				// Retrieve the other robot's numeric mailbox ID from its controller
+				CPFA_controller& other = dynamic_cast<CPFA_controller&>(
+					footBot.GetControllableEntity().GetController());
+				size_t targetMailbox = other.GetRobotID();
+				cout << "Robot " << GetId() << " Sharing pheromone trail at: " << SiteFidelityPosition.GetX() << ", " << SiteFidelityPosition.GetY()
+				     << " with robot " << footBot.GetId()
+				     << " (mailbox " << targetMailbox << ")"
+				     << " at distance " << argos::Distance(GetPosition(), otherPos2d) << endl;
+				MessageType message;
+				message.trail = SiteFidelityPosition;
+				message.strength = LoopFunctions->RateOfLayingPheromone;
+				message.decayRate = LoopFunctions->RateOfPheromoneDecay;
+				message.timestamp = LoopFunctions->getSimTimeInSeconds();
+				LoopFunctions->SendMessage(message, targetMailbox);
+				hasMidRouteShared = true;
+				break; // one share per return trip
+			}
+		}
+	}
+}
+
 
 /*****
  * RETURNING: Stay in this state until the robot has returned to the nest.
@@ -503,6 +556,9 @@ void CPFA_controller::Returning() {
  //LOG<<"Returning..."<<endl;
 	//SetHoldingFood();
 
+	if(IsHoldingFood()) {
+		PheromoneSharing();
+	}
 	// Are we there yet? (To the nest, that is.)
 	if(IsInTheNest()) {
 		// Based on a Poisson CDF, the robot may or may not create a pheromone
@@ -525,6 +581,7 @@ void CPFA_controller::Returning() {
 		  LoopFunctions->currNumCollectedFood++;
           LoopFunctions->setScore(num_targets_collected);
           if(poissonCDF_pLayRate > r1 && updateFidelity) {
+				cout << "Creating pheromone at: " << SiteFidelityPosition << " with resource density: " << ResourceDensity << endl;
 	            TrailToShare.push_back(LoopFunctions->NestPosition); //qilu 07/26/2016
                 argos::Real timeInSeconds = (argos::Real)(SimulationTick() / SimulationTicksPerSecond());
 		        Pheromone sharedPheromone(SiteFidelityPosition, TrailToShare, timeInSeconds, LoopFunctions->RateOfPheromoneDecay, ResourceDensity);
@@ -562,6 +619,7 @@ void CPFA_controller::Returning() {
       }
 
 	isGivingUpSearch = false;
+	hasMidRouteShared = false;
 	CPFA_state = DEPARTING;   
         isHoldingFood = false; 
         travelingTime+=SimulationTick()-startTime;//qilu 10/22
@@ -590,7 +648,7 @@ void CPFA_controller::Returning() {
         }
         //detect other robots in its camera view
         
-    }		
+    }	
 }
 
 void CPFA_controller::SetRandomSearchLocation() {

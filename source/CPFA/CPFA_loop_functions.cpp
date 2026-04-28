@@ -1,5 +1,7 @@
 #include "CPFA_loop_functions.h"
 
+// MessageQueue and MessageType are defined in CPFA_loop_functions.h
+
 CPFA_loop_functions::CPFA_loop_functions() :
 	RNG(argos::CRandom::CreateRNG("argos")),
         SimTime(0),
@@ -116,13 +118,17 @@ void CPFA_loop_functions::Init(argos::TConfigurationNode &node) {
     
     Num_robots = footbots.size();
     argos::LOG<<"Number of robots="<<Num_robots<<endl;
-	   for(it = footbots.begin(); it != footbots.end(); it++) {
-   	   	argos::CFootBotEntity& footBot = *argos::any_cast<argos::CFootBotEntity*>(it->second);
-		      BaseController& c = dynamic_cast<BaseController&>(footBot.GetControllableEntity().GetController());
-		      CPFA_controller& c2 = dynamic_cast<CPFA_controller&>(c);
-        c2.SetLoopFunctions(this);
-	    }
-     
+    // Initialize the message queue now that we know the number of robots
+    RobotMessageQueue.init(Num_robots);
+    size_t robotID = 0;
+	for(it = footbots.begin(); it != footbots.end(); it++) {
+		argos::CFootBotEntity& footBot = *argos::any_cast<argos::CFootBotEntity*>(it->second);
+		BaseController& c = dynamic_cast<BaseController&>(footBot.GetControllableEntity().GetController());
+		CPFA_controller& c2 = dynamic_cast<CPFA_controller&>(c);
+		c2.SetLoopFunctions(this);
+		c2.SetRobotID(robotID++);
+	}
+	
      
    NestRadiusSquared = NestRadius*NestRadius;
 	
@@ -130,6 +136,8 @@ void CPFA_loop_functions::Init(argos::TConfigurationNode &node) {
   
  ForageList.clear(); 
  last_time_in_minutes=0;
+
+ // RobotMessageQueue already initialized above when robots were enumerated
  
 }
 
@@ -632,6 +640,22 @@ void CPFA_loop_functions::ConfigureFromGenome(Real* g)
 	RateOfSiteFidelity                = g[4];
 	RateOfLayingPheromone             = g[5];
 	RateOfPheromoneDecay              = g[6];
+}
+
+void CPFA_loop_functions::SendMessage(MessageType message, size_t recipient) {
+	RobotMessageQueue.send(message, recipient);
+}
+
+MessageType CPFA_loop_functions::ReceiveMessage(size_t recipient) {
+	return RobotMessageQueue.receive(recipient);
+}
+
+bool CPFA_loop_functions::IsMessageAvailable(size_t recipient) {
+	return !RobotMessageQueue.empty(recipient);
+}
+
+MessageQueue<MessageType>& CPFA_loop_functions::getMessageQueue() {
+	return RobotMessageQueue;
 }
 
 void CPFA_loop_functions::printFoodLocation(){
