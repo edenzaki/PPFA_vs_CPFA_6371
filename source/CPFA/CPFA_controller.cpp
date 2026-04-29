@@ -353,7 +353,14 @@ void CPFA_controller::Searching() {
      if(distance.SquareLength() < TargetDistanceTolerance) {
          // randomly give up searching
          if(SimulationTick()% (5*SimulationTicksPerSecond())==0 && random < LoopFunctions->ProbabilityOfReturningToNest) {
-             
+             if(LoopFunctions->IsMessageAvailable(GetRobotID())) {
+			MessageType message = LoopFunctions->ReceiveMessage(GetRobotID());
+			cout << "Robot " << GetId() << " (" << GetRobotID() << ") received pheromone trail to follow at " << message.trail.GetX() << ", " << message.trail.GetY() << endl;
+			PheromonShared = message.trail;
+			isUsingPheromone = true;
+			CPFA_state = SEARCHING;
+			survey_count = 0; // Reset
+		}
              SetFidelityList();
 	      TrailToShare.clear();
              SetIsHeadingToNest(true);
@@ -488,15 +495,7 @@ void CPFA_controller::Surveying() {
 		log_output_stream << (GetHeading() - rotation ).SignedNormalize() << ", "  << SearchStepSize << ", "<< rotation << ", " <<  turn_vector << ", " << GetHeading() << ", " << survey_count << endl;
 		log_output_stream.close();
 		*/
-		if(LoopFunctions->IsMessageAvailable(GetRobotID())) {
-			MessageType message = LoopFunctions->ReceiveMessage(GetRobotID());
-			cout << "Robot " << GetId() << " (" << GetRobotID() << ") received pheromone trail to follow at " << message.trail.GetX() << ", " << message.trail.GetY() << endl;
-			PheromonShared = message.trail;
-			isUsingPheromone = true;
-			CPFA_state = SEARCHING;
-			survey_count = 0; // Reset
-		}
-		
+	
 		if(fabs((GetHeading() - rotation).SignedNormalize().GetValue()) < TargetAngleTolerance.GetValue()) survey_count++;
 			//else Keep trying to reach the turning angle
 	}
@@ -558,6 +557,10 @@ void CPFA_controller::Returning() {
 
 	if(IsHoldingFood()) {
 		PheromoneSharing();
+	}
+	else{
+		
+		
 	}
 	// Are we there yet? (To the nest, that is.)
 	if(IsInTheNest()) {

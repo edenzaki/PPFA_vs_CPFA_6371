@@ -663,8 +663,8 @@ void CPFA_loop_functions::printFoodLocation(){
 	float avgY = 0;
 	float counter = 1;
 	for(const argos::CVector2& food : FoodLocation) {
-		avgX += food.GetX();
-		avgY += food.GetY();
+		avgX += abs(food.GetX());
+		avgY += abs(food.GetY());
     	// printf("Food at (%f, %f)\n", food.GetX(), food.GetY());
 		counter++;
 	}
