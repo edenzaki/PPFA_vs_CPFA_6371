@@ -6,11 +6,52 @@
 #include <argos3/core/simulator/entity/floor_entity.h>
 #include <source/CPFA/CPFA_controller.h>
 #include <argos3/plugins/simulator/entities/cylinder_entity.h>
+#include <queue>
+#include <mutex>
+#include <vector>
+#include <condition_variable>
 
 using namespace argos;
 using namespace std;
 
 static const size_t GENOME_SIZE = 7; // There are 7 parameters to evolve
+
+struct MessageType {
+	argos::CVector2 trail;
+	argos::Real strength;
+	argos::Real decayRate;
+	argos::Real timestamp;
+};
+
+template <typename T>
+class MessageQueue {
+public:
+	MessageQueue() : queue_(nullptr), mutex_(nullptr), num_mailboxes_(0) {}
+	void init(size_t num_mailboxes) {
+		num_mailboxes_ = num_mailboxes;
+		queue_ = new std::queue<T>[num_mailboxes];
+		mutex_ = new std::mutex[num_mailboxes];
+	}
+	void send(T message, size_t recipient) {
+		std::unique_lock<std::mutex> lock(mutex_[recipient]);
+		queue_[recipient].push(std::move(message));
+	}
+	T receive(size_t recipient) {
+		std::unique_lock<std::mutex> lock(mutex_[recipient]);
+		if (queue_[recipient].empty()) return T{};
+		T message = std::move(queue_[recipient].front());
+		queue_[recipient].pop();
+		return message;
+	}
+	bool empty(size_t recipient) {
+		std::unique_lock<std::mutex> lock(mutex_[recipient]);
+		return queue_[recipient].empty();
+	}
+private:
+	std::queue<T>* queue_;
+	std::mutex*    mutex_;
+	size_t         num_mailboxes_;
+};
 
 class CPFA_loop_functions : public argos::CLoopFunctions
 {
@@ -28,6 +69,8 @@ class CPFA_loop_functions : public argos::CLoopFunctions
 		void PostStep();
 		bool IsExperimentFinished();
 		void PostExperiment();
+		void SendMessage(MessageType message, size_t recipient);
+		MessageType ReceiveMessage(size_t recipient);
 		argos::CColor GetFloorColor(const argos::CVector2 &c_pos_on_floor);
 
 		// GA Functions
@@ -65,6 +108,13 @@ class CPFA_loop_functions : public argos::CLoopFunctions
 		double getRateOfSiteFidelity();
 		double getRateOfLayingPheromone();
 		double getRateOfPheromoneDecay();
+		MessageQueue<MessageType>& getMessageQueue();
+		bool IsMessageAvailable(size_t recipient);
+		//adding print function djg
+		void printFoodLocation();
+		MessageQueue<MessageType> RobotMessageQueue;
+
+		
 
 	protected:
 
@@ -111,6 +161,11 @@ class CPFA_loop_functions : public argos::CLoopFunctions
 		argos::Real NestRadiusSquared;
 		argos::Real NestElevation;
 		argos::Real SearchRadiusSquared;
+
+		// adding list of food location and other variables djg
+		std::vector<argos::CVector2> FoodLocation;
+		std::vector<pair<int,bool>> typeSearch;
+		std::vector<int> states;
 
 		/* list variables for food & pheromones */
 		std::vector<argos::CVector2> FoodList;

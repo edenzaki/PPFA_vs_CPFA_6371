@@ -1,5 +1,7 @@
 #include "CPFA_loop_functions.h"
 
+// MessageQueue and MessageType are defined in CPFA_loop_functions.h
+
 CPFA_loop_functions::CPFA_loop_functions() :
 	RNG(argos::CRandom::CreateRNG("argos")),
         SimTime(0),
@@ -116,13 +118,17 @@ void CPFA_loop_functions::Init(argos::TConfigurationNode &node) {
     
     Num_robots = footbots.size();
     argos::LOG<<"Number of robots="<<Num_robots<<endl;
-	   for(it = footbots.begin(); it != footbots.end(); it++) {
-   	   	argos::CFootBotEntity& footBot = *argos::any_cast<argos::CFootBotEntity*>(it->second);
-		      BaseController& c = dynamic_cast<BaseController&>(footBot.GetControllableEntity().GetController());
-		      CPFA_controller& c2 = dynamic_cast<CPFA_controller&>(c);
-        c2.SetLoopFunctions(this);
-	    }
-     
+    // Initialize the message queue now that we know the number of robots
+    RobotMessageQueue.init(Num_robots);
+    size_t robotID = 0;
+	for(it = footbots.begin(); it != footbots.end(); it++) {
+		argos::CFootBotEntity& footBot = *argos::any_cast<argos::CFootBotEntity*>(it->second);
+		BaseController& c = dynamic_cast<BaseController&>(footBot.GetControllableEntity().GetController());
+		CPFA_controller& c2 = dynamic_cast<CPFA_controller&>(c);
+		c2.SetLoopFunctions(this);
+		c2.SetRobotID(robotID++);
+	}
+	
      
    NestRadiusSquared = NestRadius*NestRadius;
 	
@@ -130,6 +136,8 @@ void CPFA_loop_functions::Init(argos::TConfigurationNode &node) {
   
  ForageList.clear(); 
  last_time_in_minutes=0;
+
+ // RobotMessageQueue already initialized above when robots were enumerated
  
 }
 
@@ -227,6 +235,10 @@ bool CPFA_loop_functions::IsExperimentFinished() {
 void CPFA_loop_functions::PostExperiment() {
 	  
      printf("%f, %f, %lu\n", score, getSimTimeInSeconds(), RandomSeed);
+	 float fpts = score/(getSimTimeInSeconds()/60);
+	 printf("food per tick/ min: %f \n", fpts);
+	 printf("NestPosition (%f , %f): \n" , NestPosition.GetX(), NestPosition.GetY());
+	 printFoodLocation();
        
                   
     if (PrintFinalScore == 1) {
@@ -630,4 +642,68 @@ void CPFA_loop_functions::ConfigureFromGenome(Real* g)
 	RateOfPheromoneDecay              = g[6];
 }
 
+void CPFA_loop_functions::SendMessage(MessageType message, size_t recipient) {
+	RobotMessageQueue.send(message, recipient);
+}
+
+MessageType CPFA_loop_functions::ReceiveMessage(size_t recipient) {
+	return RobotMessageQueue.receive(recipient);
+}
+
+bool CPFA_loop_functions::IsMessageAvailable(size_t recipient) {
+	return !RobotMessageQueue.empty(recipient);
+}
+
+MessageQueue<MessageType>& CPFA_loop_functions::getMessageQueue() {
+	return RobotMessageQueue;
+}
+
+void CPFA_loop_functions::printFoodLocation(){
+	float avgX = 0;
+	float avgY = 0;
+	float counter = 1;
+	for(const argos::CVector2& food : FoodLocation) {
+		avgX += abs(food.GetX());
+		avgY += abs(food.GetY());
+    	// printf("Food at (%f, %f)\n", food.GetX(), food.GetY());
+		counter++;
+	}
+	avgX = avgX/counter;
+	avgY = avgY/counter;
+	printf(" Avg Food at (%f, %f)\n", avgX, avgY);
+
+	// type of search
+	int a = 0;
+	int b = 0;
+	for(auto x : typeSearch){
+		if(x.first == 0){
+			a++;
+		}
+		else{
+			b++;
+		}
+		
+	}
+	// pheromone or infidelity
+	printf("Uniformed search : %i , Informed search : %i \n", a , b);
+	a = 0;
+	b = 0;
+	int c = 0;
+	int d = 0;
+	for(auto x : states){
+		if(x == 0){
+			a++;
+		}
+		else if(x == 1){
+			b++;
+		}
+		else if(x == 2){
+			c++;
+		}
+		else{
+			d++;
+		}
+	}
+	printf("departing: %i, searching: %i, returning: %i, surveying: %i \n", a,b,c,d);
+}
 REGISTER_LOOP_FUNCTIONS(CPFA_loop_functions, "CPFA_loop_functions")

@@ -32,6 +32,9 @@ class CPFA_controller : public BaseController {
 		Real FoodDistanceTolerance;
 
 		void SetLoopFunctions(CPFA_loop_functions* lf);
+		void SetRobotID(size_t id);
+		size_t GetRobotID() const;
+		void PheromoneSharing();
   
   size_t     GetSearchingTime();//qilu 09/26/2016
   size_t      GetTravelingTime();//qilu 09/26/2016
@@ -41,6 +44,7 @@ class CPFA_controller : public BaseController {
 
 	private:
   string 			controllerID;//qilu 07/26/2016
+		size_t    RobotID;
 
 		CPFA_loop_functions* LoopFunctions;
 		argos::CRandom::CRNG* RNG;
@@ -49,6 +53,7 @@ class CPFA_controller : public BaseController {
 		std::vector<argos::CVector2> TrailToShare;
 		std::vector<argos::CVector2> TrailToFollow;
 		std::vector<argos::CRay3>    MyTrail;
+		argos::CVector2 PheromonShared;
 
 		/* robot position variables */
 		argos::CVector2 SiteFidelityPosition;
@@ -61,6 +66,7 @@ class CPFA_controller : public BaseController {
 		bool isHoldingFood;
 		bool isUsingSiteFidelity;
 		bool isGivingUpSearch;
+		bool hasMidRouteShared;
   
 		size_t ResourceDensity;
 		size_t MaxTrailSize;
