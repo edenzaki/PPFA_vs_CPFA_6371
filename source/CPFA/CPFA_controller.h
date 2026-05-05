@@ -81,7 +81,8 @@ class CPFA_controller : public BaseController {
 			DEPARTING = 0,
 			SEARCHING = 1,
 			RETURNING = 2,
-			SURVEYING = 3
+			SURVEYING = 3,
+			SHARING = 4
 		} CPFA_state;
 
 		/* iAnt CPFA state functions */
