@@ -133,7 +133,7 @@ void CPFA_qt_user_functions::DrawPheromones() {
                  ray = CRay3(CVector3(trail[j - 1].GetX(), trail[j - 1].GetY(), 0.01),
 		CVector3(trail[j].GetX(), trail[j].GetY(), 0.01));
                  
-                 DrawRay(ray, trailColor, 1.0);
+                 DrawRay(ray, trailColor, 50.0);
              }
 
 	 DrawCylinder(CVector3(x, y, 0.0), CQuaternion(), loopFunctions.FoodRadius, 0.025, pColor);

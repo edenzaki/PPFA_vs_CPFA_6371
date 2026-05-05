@@ -53,7 +53,7 @@ void CPFA_controller::Init(argos::TConfigurationNode &node) {
         controllerID= GetId();
     m_pcLEDs   = GetActuator<CCI_LEDsActuator>("leds");
     controllerID= GetId();//qilu 07/26/2016
-		m_pcLEDs->SetAllColors(CColor::GREEN);
+		m_pcLEDs->SetAllColors(CColor::WHITE); // set initial LED color to white
 }
 
 void CPFA_controller::ControlStep() {
@@ -95,11 +95,36 @@ void CPFA_controller::ControlStep() {
 	}
 	*/
 
-	// Add line so we can draw the trail
+	// Set trail color based on current state
+	switch(CPFA_state) {
+		case DEPARTING: 
+		  m_pcLEDs->SetAllColors(CColor::BLUE); // departing state is blue
+			break;
+		case SEARCHING: // searching state is green
+			m_pcLEDs->SetAllColors(CColor::GREEN);
+			break;
+		case RETURNING: // returning state is red
+			m_pcLEDs->SetAllColors(CColor::RED);
+			break;
+		case SURVEYING: // surveying state is yellow
+			m_pcLEDs->SetAllColors(CColor::YELLOW);
+			break;
+		case SHARING: // sharing state is cyan (flashing)
+			if((SimulationTick() % 10) < 5) {
+				m_pcLEDs->SetAllColors(CColor::CYAN);
+			} else {
+				m_pcLEDs->SetAllColors(CColor::BLACK);
+			}
+			break;
+		default: // default trail color is orange
+			m_pcLEDs->SetAllColors(CColor::ORANGE);
+	}
 
-	CVector3 position3d(GetPosition().GetX(), GetPosition().GetY(), 0.00);
-	CVector3 target3d(previous_position.GetX(), previous_position.GetY(), 0.00);
-	CRay3 targetRay(target3d, position3d);
+	// Add line so we can draw the trail at robot height
+	const argos::Real robotHeight = 0.08;
+	CVector3 position3d(GetPosition().GetX(), GetPosition().GetY(), robotHeight); 
+	CVector3 target3d(previous_position.GetX(), previous_position.GetY(), robotHeight); 
+	CRay3 targetRay(target3d, position3d); 
 	myTrail.push_back(targetRay);
 	LoopFunctions->TargetRayList.push_back(targetRay);
 	LoopFunctions->TargetRayColorList.push_back(TrailColor);
