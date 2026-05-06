@@ -371,6 +371,7 @@ void CPFA_controller::Searching() {
 	if(IsHoldingFood() == false) {
 		   argos::CVector2 distance = GetPosition() - GetTarget();
 		   argos::Real     random   = RNG->Uniform(argos::CRange<argos::Real>(0.0, 1.0));
+		   PheromoneSharing(); // Check if there are pheromones to share and if there are nearby robots to share with
      
      // If we reached our target search location, set a new one. The 
      // new search location calculation is different based on whether
@@ -378,14 +379,6 @@ void CPFA_controller::Searching() {
      if(distance.SquareLength() < TargetDistanceTolerance) {
          // randomly give up searching
          if(SimulationTick()% (5*SimulationTicksPerSecond())==0 && random < LoopFunctions->ProbabilityOfReturningToNest) {
-             if(LoopFunctions->IsMessageAvailable(GetRobotID())) {
-			MessageType message = LoopFunctions->ReceiveMessage(GetRobotID());
-			cout << "Robot " << GetId() << " (" << GetRobotID() << ") received pheromone trail to follow at " << message.trail.GetX() << ", " << message.trail.GetY() << endl;
-			PheromonShared = message.trail;
-			isUsingPheromone = true;
-			CPFA_state = SEARCHING;
-			survey_count = 0; // Reset
-		}
              SetFidelityList();
 	      TrailToShare.clear();
              SetIsHeadingToNest(true);
@@ -532,13 +525,15 @@ void CPFA_controller::Surveying() {
 		survey_count = 0; // Reset
                 searchingTime+=SimulationTick()-startTime;//qilu 10/22
                 startTime = SimulationTick();//qilu 10/22
+		PheromoneSharing(); // Check if there are pheromones to share and if there are nearby robots to share with
             
 	}
+	
 }
 
 void CPFA_controller::PheromoneSharing() {
 	// Check if there are pheromones to share and if there are nearby robots to share with
-	if(!TrailToShare.empty() && !hasMidRouteShared) { // REFACTOR: It should be able to share the trail to more than one robot, but we need to define decay of the shared location per robot or level, look at PoissonCDF for laying pheromone and maybe add a separate one for sharing pheromone. For now, just share to one robot and then don't share again until the next time it picks up food.
+	if(IsHoldingFood() && !TrailToShare.empty() && !hasMidRouteShared) { // REFACTOR: It should be able to share the trail to more than one robot, but we need to define decay of the shared location per robot or level, look at PoissonCDF for laying pheromone and maybe add a separate one for sharing pheromone. For now, just share to one robot and then don't share again until the next time it picks up food.
 		// Check for nearby robots within 1 meter
 		argos::CSpace::TMapPerType& footbots = LoopFunctions->GetSpace().GetEntitiesByType("foot-bot");
 		argos::CSpace::TMapPerType::iterator it;
@@ -568,6 +563,26 @@ void CPFA_controller::PheromoneSharing() {
 			}
 		}
 	}
+	else if(LoopFunctions->IsMessageAvailable(GetRobotID()) && !IsHoldingFood()) {
+		MessageType message = LoopFunctions->ReceiveMessage(GetRobotID());
+		cout << "Robot " << GetId() << " (" << GetRobotID() << ") received pheromone trail to follow at " << message.trail.GetX() << ", " << message.trail.GetY() << endl;
+		isUsingPheromone = true;
+		// Drop what we're doing and head directly to the trail destination
+		SiteFidelityPosition = message.trail;
+		isInformed = true;
+		isUsingSiteFidelity = false;
+		SetIsHeadingToNest(false);
+		SetTarget(message.trail);
+		CPFA_state = DEPARTING;
+		survey_count = 0;
+
+		// Draw a line from this robot to the trail destination it just received
+		const argos::Real msgRayHeight = 0.15;
+		argos::CVector3 fromPos(GetPosition().GetX(), GetPosition().GetY(), msgRayHeight);
+		argos::CVector3 toPos(message.trail.GetX(), message.trail.GetY(), msgRayHeight);
+		LoopFunctions->PheromoneShared.push_back(argos::CRay3(fromPos, toPos));
+		LoopFunctions->PheromoneSharedColor.push_back(argos::CColor::MAGENTA);
+	}
 }
 
 
@@ -580,13 +595,8 @@ void CPFA_controller::Returning() {
  //LOG<<"Returning..."<<endl;
 	//SetHoldingFood();
 
-	if(IsHoldingFood()) {
-		PheromoneSharing();
-	}
-	else{
-		
-		
-	}
+	PheromoneSharing(); // Check if there are pheromones to share and if there are nearby robots to share with
+
 	// Are we there yet? (To the nest, that is.)
 	if(IsInTheNest()) {
 		// Based on a Poisson CDF, the robot may or may not create a pheromone
