@@ -298,6 +298,9 @@ size_t CPFA_controller::GetRobotID() const {
 
 void CPFA_controller::Departing()
 {
+	// pruning and decaying mailboxes
+	LoopFunctions->DecayAndPruneMailbox(LoopFunctions->getMessageQueue(), GetRobotID(), LoopFunctions->getSimTimeInSeconds());
+
      //LOG<<"Departing..."<<endl;
 	    argos::Real distanceToTarget = (GetPosition() - GetTarget()).Length();
 	    argos::Real randomNumber = RNG->Uniform(argos::CRange<argos::Real>(0.0, 1.0));
@@ -1016,5 +1019,6 @@ void CPFA_controller::UpdateTargetRayList() {
 		}
 	}
 }
+
 
 REGISTER_CONTROLLER(CPFA_controller, "CPFA_controller")

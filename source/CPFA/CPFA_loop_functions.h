@@ -112,6 +112,7 @@ class CPFA_loop_functions : public argos::CLoopFunctions
 		bool IsMessageAvailable(size_t recipient);
 		//adding print function djg
 		void printFoodLocation();
+		void DecayAndPruneMailbox(MessageQueue<MessageType>& mailbox, size_t robotID, argos:: Real currentTime);
 		MessageQueue<MessageType> RobotMessageQueue;
 
 		
