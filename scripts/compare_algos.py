@@ -1,0 +1,317 @@
+import os
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from scipy.stats import ttest_ind
+
+MILESTONES = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0]
+
+BASELINE_LABEL  = "CPFA"
+ALGORITHM_LABEL = "PPSA"
+
+PALETTE = {
+    BASELINE_LABEL:  '#4C72B0',
+    ALGORITHM_LABEL: '#C0392B',
+}
+
+
+def sig_label(p: float) -> str:
+    """Significance star notation."""
+    if p < 0.001:
+        return '***'
+    elif p < 0.01:
+        return '**'
+    elif p < 0.05:
+        return '*'
+    return '-'
+
+
+def draw_bracket(ax, x1, x2, y_top, label, color='black', lw=0.9, fontsize=9):
+    """Draw a bracket between x1 and x2 at y_top with a significance label."""
+    y_range = ax.get_ylim()[1] - ax.get_ylim()[0]
+    tick_h = y_range * 0.012
+    ax.plot([x1, x1, x2, x2],
+            [y_top, y_top + tick_h, y_top + tick_h, y_top],
+            lw=lw, c=color, clip_on=False)
+    ax.text((x1 + x2) / 2, y_top + tick_h * 1.15, label,
+            ha='center', va='bottom', color=color, fontsize=fontsize,
+            clip_on=False)
+
+
+def _dist_short(distribution: str) -> str:
+    """Return the short folder name for a distribution string."""
+    return distribution.replace('_distribution', '')
+
+
+def _results_path(distribution: str, algo_label: str) -> str:
+    """Return absolute path to the results file for a given distribution and algo."""
+    short = _dist_short(distribution)
+    base_dir = os.path.join(os.path.dirname(__file__), "..", "results", short)
+    return os.path.join(base_dir, algo_label, f"{short}_results")
+
+
+def _load_group(distribution: str, algo_label: str) -> pd.DataFrame:
+    """Load a single group's results file."""
+    path = _results_path(distribution, algo_label)
+    df = pd.read_csv(path)
+    df['Experiment Type'] = algo_label
+    return df
+
+
+def load_all_data(distribution: str,
+                  baseline: str = "CPFA",
+                  algorithm: str = "PPSA") -> pd.DataFrame:
+    """Load results for both groups and return a combined DataFrame filtered to 10% milestones."""
+    frames = []
+    for label in [baseline, algorithm]:
+        df = _load_group(distribution, label)
+        df = df[df['milestone_percent'].round(1).isin([float(m) for m in range(10, 101, 10)])].copy()
+        df['milestone_percent'] = df['milestone_percent'].round(0).astype(int)
+        frames.append(df[['milestone_percent', 'cumulative_time', 'Experiment Type']])
+    return pd.concat(frames, ignore_index=True)
+
+
+def load_highest_milestone_data(distribution: str,
+                                baseline: str = "CPFA",
+                                algorithm: str = "PPSA") -> pd.DataFrame:
+    """For each seed, find the highest milestone_percent reached and return a combined DataFrame."""
+    frames = []
+    for label in [baseline, algorithm]:
+        df = _load_group(distribution, label)
+        highest = (
+            df.groupby('random_seed')['milestone_percent']
+            .max()
+            .reset_index()
+            .rename(columns={'milestone_percent': 'highest_milestone'})
+        )
+        highest['Experiment Type'] = label
+        frames.append(highest)
+    return pd.concat(frames, ignore_index=True)
+
+
+def plot_highest_milestone(distribution: str,
+                           distribution_label: str,
+                           baseline: str = "CPFA",
+                           algorithm: str = "PPSA") -> None:
+    """Box-plot comparing the highest milestone percent reached per seed for each algorithm."""
+    data = load_highest_milestone_data(distribution, baseline, algorithm)
+
+    sns.set_theme(style='whitegrid')
+    sns.set_context('paper', font_scale=2.2)
+    plt.rcParams.update({
+        'font.size': 16,
+        'axes.titlesize': 24,
+        'axes.labelsize': 18,
+        'xtick.labelsize': 16,
+        'ytick.labelsize': 16,
+        'legend.fontsize': 16,
+    })
+
+    hue_order = [baseline, algorithm]
+    fig, ax = plt.subplots(figsize=(7, 7))
+
+    sns.boxplot(
+        data=data,
+        x='Experiment Type',
+        y='highest_milestone',
+        order=hue_order,
+        palette=[PALETTE.get(baseline, '#4C72B0'), PALETTE.get(algorithm, '#C0392B')],
+        width=0.45,
+        fliersize=4,
+        linewidth=1.1,
+        showfliers=True,
+        ax=ax,
+    )
+
+    # significance bracket between the two boxes
+    b_vals = data[data['Experiment Type'] == baseline]['highest_milestone'].values
+    a_vals = data[data['Experiment Type'] == algorithm]['highest_milestone'].values
+    _, p = ttest_ind(b_vals, a_vals, equal_var=False)
+    y_top = data['highest_milestone'].max()
+    ax.set_ylim(top=y_top * 1.2)
+    draw_bracket(ax, 0, 1, y_top * 1.08, sig_label(p), fontsize=11)
+
+    ax.set_ylabel('Highest Milestone Reached (%)', fontsize=18)
+    ax.set_xlabel('Algorithm', fontsize=18)
+    ax.set_title(f'Highest Milestone — {distribution_label}', fontsize=20)
+
+    plt.tight_layout()
+    out_dir = "results"
+    out_prefix = os.path.join(out_dir, f"highest_milestone_{distribution}")
+    fig.savefig(f"{out_prefix}.png", dpi=300, bbox_inches='tight')
+    fig.savefig(f"{out_prefix}.pdf", bbox_inches='tight')
+    fig.savefig(f"{out_prefix}.svg", bbox_inches='tight')
+    plt.close(fig)
+    print(f"Saved {out_prefix}.{{png,pdf,svg}}")
+
+
+def plot_distribution(distribution: str,
+                      distribution_label: str,
+                      baseline: str = "CPFA",
+                      algorithm: str = "PPSA") -> None:
+    """Create a box-plot with significance brackets for a single distribution."""
+    data = load_all_data(distribution, baseline, algorithm)
+
+    sns.set_theme(style='whitegrid')
+    sns.set_context('paper', font_scale=2.2)
+    plt.rcParams.update({
+        'font.size': 16,
+        'axes.titlesize': 24,
+        'axes.labelsize': 18,
+        'xtick.labelsize': 16,
+        'ytick.labelsize': 16,
+        'legend.fontsize': 16,
+    })
+
+    fig, ax = plt.subplots(figsize=(14, 7))
+
+    hue_order = [baseline, algorithm]
+    sns.boxplot(
+        data=data,
+        x='milestone_percent',
+        y='cumulative_time',
+        hue='Experiment Type',
+        palette=PALETTE,
+        hue_order=hue_order,
+        width=0.45,
+        fliersize=3,
+        linewidth=1.1,
+        dodge=True,
+        showfliers=True,
+        ax=ax,
+    )
+
+    ax.set_ylabel('Time (seconds)', fontsize=18)
+    ax.set_xlabel('Percent of Resources Collected', fontsize=18)
+
+    for artist in ax.artists:
+        artist.set_edgecolor('black')
+        artist.set_linewidth(0.8)
+
+    # ---- significance brackets ----
+    milestones = sorted(data['milestone_percent'].unique())
+    box_width = 0.45 / 3          # matches width/n_groups
+    offsets = np.array([-box_width, 0.0, box_width])
+
+    y_max_global = data['cumulative_time'].max()
+    ax.set_ylim(top=y_max_global * 1.28)
+
+    for tick_idx, ms in enumerate(milestones):
+        sub = data[data['milestone_percent'] == ms]
+        cpfa_vals  = sub[sub['Experiment Type'] == baseline]['cumulative_time'].values
+        ppsa_vals  = sub[sub['Experiment Type'] == algorithm]['cumulative_time'].values
+
+        _, p_cpfa  = ttest_ind(cpfa_vals,  ppsa_vals, equal_var=False)
+
+        y_base = sub['cumulative_time'].max()
+        gap    = (ax.get_ylim()[1] - ax.get_ylim()[0]) * 0.055
+
+        x_cpfa  = tick_idx + offsets[0]
+        x_ppsa  = tick_idx + offsets[1]
+
+        # Lower bracket: ppsa vs ppsa
+        draw_bracket(ax, x_cpfa, x_ppsa, y_base + gap * 0.6,
+                     sig_label(p_cpfa), fontsize=8)
+
+    # ---- two-legend layout ----
+    ax.legend(loc='upper left', borderaxespad=0.5, title='')
+
+    plt.tight_layout()
+
+    out_dir = "results"
+    out_prefix = os.path.join(out_dir, f"ttest_boxplot_milestones_{distribution}")
+    fig.savefig(f"{out_prefix}.png", dpi=300, bbox_inches='tight')
+    fig.savefig(f"{out_prefix}.pdf", bbox_inches='tight')
+    fig.savefig(f"{out_prefix}.svg", bbox_inches='tight')
+    plt.close(fig)
+    print(f"Saved {out_prefix}.{{png,pdf,svg}}")
+
+
+def load_milestone_times(group: str, milestone: float, distribution: str) -> pd.Series:
+    """Return cumulative_time at a given milestone percent for each seed in a group."""
+    df = _load_group(distribution, group)
+    completed = df[df["milestone_percent"].round(1) == milestone]["cumulative_time"]
+    return completed.reset_index(drop=True)
+
+def main(baseline: str = "CPFA", algorithm: str = "PPSA", distribution: str = "cluster_distribution"):
+    results_baseline_new = []
+
+    for milestone in MILESTONES:
+        try:
+            baseline_data = load_milestone_times(baseline, milestone, distribution)
+            algorithm_data = load_milestone_times(algorithm, milestone, distribution)
+        except FileNotFoundError as e:
+            print(f"File not found: {e.filename}")
+            continue
+            
+        if len(baseline_data) == 0 or len(algorithm_data) == 0:
+            print(f"Not enough data for milestone {milestone}%")
+            continue
+
+        t_stat, p_val = ttest_ind(baseline_data, algorithm_data, equal_var=False)
+        results_baseline_new.append(
+            {
+                "milestone_percent": f"{int(milestone)}\\%",
+                "baseline_mean": round(baseline_data.mean(), 2),
+                "algorithm_mean": round(algorithm_data.mean(), 2),
+                #"t_statistic": round(t_stat, 4),
+                "p_value_baseline_new": p_val,
+                #"significant (p<0.05)": p_val < 0.05,
+            }
+        )
+        
+    if not results_baseline_new:
+        print("No results to display.")
+        return
+
+    df_results_baseline_new = pd.DataFrame(results_baseline_new)
+    pd.set_option("display.float_format", "{:.4f}".format)
+    pd.set_option("display.max_columns", None)
+    pd.set_option("display.width", 140)
+    #print(df_results_baseline_new.to_string(index=False))
+
+    out_path = os.path.join("results", "ttest_milestones_results.csv")
+    df_results_baseline_new.to_csv(out_path, index=False)
+    #print(f"\nResults saved to {out_path}")
+
+
+    algorithm_label = "GPFA"
+    baseline_label = "PPSA"
+    if distribution == "random_distribution":
+        distribution_label = "Random"
+    elif distribution == "cluster_distribution":
+        distribution_label = "Cluster"
+    elif distribution == "powerlaw_distribution":
+        distribution_label = "Powerlaw"
+    else:
+        distribution_label = distribution
+
+    # Generate plots first (independent of LaTeX)
+    plot_distribution(distribution, distribution_label, baseline, algorithm)
+    plot_highest_milestone(distribution, distribution_label, baseline, algorithm)
+
+    # LaTeX output
+    try:
+        latex_df = df_results_baseline_new.copy()
+        latex_df["p_value_baseline_new"] = latex_df["p_value_baseline_new"].apply(lambda x: f"{x:.4f}" if x >= 0.05 else f"\\textbf{{{x:.4f}}}" if x >= 0.0001 else "\\textbf{<0.0001}")
+        latex_df["baseline_mean"] = latex_df["baseline_mean"].apply(lambda x: f"{x:.2f}")
+        latex_df["algorithm_mean"] = latex_df["algorithm_mean"].apply(lambda x: f"{x:.2f}")
+        latex_df.columns = ["Milestone", f"\\begin{{tabular}}[c]{{@{{}}c@{{}}}}{baseline_label} \\\\ Means \\end{{tabular}}", f"\\begin{{tabular}}[c]{{@{{}}c@{{}}}}{algorithm_label} \\\\ Means \\end{{tabular}}", f"\\begin{{tabular}}{{@{{}}c@{{}}}} p-value \\\\ ({baseline_label} vs {algorithm_label}) \\end{{tabular}}"]
+        latex_str = latex_df.to_latex(
+            index=False,
+            column_format="|l|c|c|c|c|c|l|",
+            escape=False,
+            caption=f"Experiment: {baseline_label} and {algorithm_label}  Algorithm by ({distribution_label})",
+            label=f"tab:ttest_milestones_results_{baseline}_{algorithm}_{distribution}",
+        )
+        print(latex_str)
+    except Exception as e:
+        print(f"LaTeX generation skipped: {e}")
+
+
+if __name__ == "__main__":
+    main(baseline="CPFA", algorithm="PPSA", distribution="cluster_distribution")
+    main(baseline="CPFA", algorithm="PPSA", distribution="powerlaw_distribution")
+    main(baseline="CPFA", algorithm="PPSA", distribution="random_distribution")
+
