@@ -20,6 +20,7 @@ CPFA_loop_functions::CPFA_loop_functions() :
 	DrawIDs(1),
 	DrawTrails(1),
 	DrawTargetRays(1),
+	DrawPheromoneShared(1),
 	FoodDistribution(2),
 	FoodItemCount(256),
 	PowerlawFoodUnitCount(256),
@@ -73,6 +74,7 @@ void CPFA_loop_functions::Init(argos::TConfigurationNode &node) {
 	argos::GetNodeAttribute(settings_node, "DrawIDs", DrawIDs);
 	argos::GetNodeAttribute(settings_node, "DrawTrails", DrawTrails);
 	argos::GetNodeAttribute(settings_node, "DrawTargetRays", DrawTargetRays);
+	argos::GetNodeAttribute(settings_node, "DrawPheromoneShared", DrawPheromoneShared);
 	argos::GetNodeAttribute(settings_node, "FoodDistribution", FoodDistribution);
 	argos::GetNodeAttribute(settings_node, "FoodItemCount", FoodItemCount);
 	argos::GetNodeAttribute(settings_node, "PowerlawFoodUnitCount", PowerlawFoodUnitCount);
@@ -159,6 +161,8 @@ void CPFA_loop_functions::Reset() {
 	PheromoneList.clear();
 	FidelityList.clear();
     TargetRayList.clear();
+	PheromoneShared.clear();
+	PheromoneSharedColor.clear();
     
     SetFoodDistribution();
     
@@ -197,6 +201,8 @@ void CPFA_loop_functions::PreStep() {
 	FidelityList.clear();
 	PheromoneList.clear();
         TargetRayList.clear();
+        PheromoneShared.clear();
+        PheromoneSharedColor.clear();
     }
 }
 

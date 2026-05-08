@@ -53,6 +53,7 @@ void CPFA_qt_user_functions::DrawOnArena(CFloorEntity& entity) {
 	DrawNest();
 
 	if(loopFunctions.DrawTargetRays == 1) DrawTargetRays();
+	if(loopFunctions.DrawPheromoneShared == 1) DrawPheromoneShared();
 }
 
 /*****
@@ -164,6 +165,14 @@ void CPFA_qt_user_functions::DrawTargetRays() {
 			DrawRay(loopFunctions.TargetRayList[j], loopFunctions.TargetRayColorList[j]);
 		}
 	//}
+}
+
+void CPFA_qt_user_functions::DrawPheromoneShared() {
+	for(size_t i = 0; i < loopFunctions.PheromoneShared.size(); i++) {
+		//cout << "Drawing shared pheromone at " << loopFunctions.PheromoneShared[i] << endl;
+		// Draw a ray from robot to the shared pheromone location in real time
+		DrawRay(loopFunctions.PheromoneShared[i], loopFunctions.PheromoneSharedColor[i]);
+	}
 }
 
 /*

@@ -98,6 +98,7 @@ class CPFA_loop_functions : public argos::CLoopFunctions
 		argos::Real getSimTimeInSeconds();
 
 		std::vector<argos::CColor>   TargetRayColorList;
+		std::vector<argos::CColor>   PheromoneSharedColor; // color for drawing the shared pheromone
 
 		unsigned int getNumberOfRobots();
         void increaseNumDistributedFoodByOne();
@@ -134,6 +135,7 @@ class CPFA_loop_functions : public argos::CLoopFunctions
 		size_t DrawIDs;
 		size_t DrawTrails;
 		size_t DrawTargetRays;
+		size_t DrawPheromoneShared;
 		size_t FoodDistribution;
 		size_t FoodItemCount;
 		size_t PowerlawFoodUnitCount;
@@ -175,6 +177,7 @@ class CPFA_loop_functions : public argos::CLoopFunctions
                 map<string, argos::CVector2> FidelityList; 
 		std::vector<Pheromone>   PheromoneList; 
 		std::vector<argos::CRay3>    TargetRayList;
+		std::vector<argos::CRay3> PheromoneShared; // position of the shared pheromone
 		argos::CRange<argos::Real>   ForageRangeX;
 		argos::CRange<argos::Real>   ForageRangeY;
   
