@@ -732,7 +732,7 @@ void CPFA_loop_functions::DecayAndPruneMailbox(MessageQueue<MessageType>& mailbo
         }
         else{
 			// if I discard msg
-			printf("KILLED MSG \n");
+			printf("KILLED MSG \n"); 
 		}
     }
     
