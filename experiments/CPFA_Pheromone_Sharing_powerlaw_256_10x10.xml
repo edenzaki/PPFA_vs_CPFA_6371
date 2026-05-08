@@ -71,7 +71,7 @@
                 DrawPheromoneShared="1"
                 DrawTrails="0" 
                 FoodDistribution="2" 
-                FoodItemCount="100" 
+                FoodItemCount="256" 
                 FoodRadius="0.05" 
                 MaxSimCounter="1" 
                 MaxSimTimeInSeconds="720" 
@@ -192,3 +192,4 @@
   </visualization> 
 -->
 </argos-configuration>
+

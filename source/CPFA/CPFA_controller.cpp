@@ -554,7 +554,7 @@ void CPFA_controller::PheromoneSharing() {
 				     << " at distance " << argos::Distance(GetPosition(), otherPos2d) << endl;
 				MessageType message;
 				message.trail = SiteFidelityPosition;
-				message.strength = LoopFunctions->RateOfLayingPheromone;
+				message.strength = ResourceDensity;
 				message.decayRate = LoopFunctions->RateOfPheromoneDecay;
 				message.timestamp = LoopFunctions->getSimTimeInSeconds();
 				LoopFunctions->SendMessage(message, targetMailbox);

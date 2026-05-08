@@ -1,4 +1,19 @@
-<?xml version="1.0" ?><argos-configuration>
+import argparse
+import subprocess
+import os
+
+def generate_xml_content(dist_name):
+    # Determine params based on dist and count
+    food_dist_val = "0"
+    
+    if dist_name == "cluster":
+        food_dist_val = "1"
+    elif dist_name == "powerlaw":
+        food_dist_val = "2"
+    elif dist_name == "random":
+        food_dist_val = "0"
+
+    xml_content = f"""<?xml version="1.0" ?><argos-configuration>
 
   <!-- ************************* -->
   <!-- * General configuration * -->
@@ -70,8 +85,8 @@
                 DrawTargetRays="0" 
                 DrawPheromoneShared="1"
                 DrawTrails="0" 
-                FoodDistribution="2" 
-                FoodItemCount="100" 
+                FoodDistribution="{food_dist_val}" 
+                FoodItemCount="256" 
                 FoodRadius="0.05" 
                 MaxSimCounter="1" 
                 MaxSimTimeInSeconds="720" 
@@ -192,3 +207,36 @@
   </visualization> 
 -->
 </argos-configuration>
+
+"""
+    return xml_content
+
+def main():
+    parser = argparse.ArgumentParser(description="Generate CPFA Pheromone Sharing XML files.")
+    parser.add_argument("--output-dir", default=".", help="Directory to save generated files")
+
+    args = parser.parse_args()
+
+    distributions = ["cluster", "random", "powerlaw"]
+
+    # Create output directory if it doesn't exist
+    if not os.path.exists(args.output_dir):
+        os.makedirs(args.output_dir)
+
+    output_dir = "results/"
+
+    for dist in distributions:
+        content = generate_xml_content(dist)
+        filename = f"CPFA_Pheromone_Sharing_{dist}_256_10x10.xml"
+        filepath = os.path.join(output_dir, filename)
+        results_filepath = os.path.join(output_dir, f"{dist}/PPSA/")
+        with open(filepath, 'w') as f:
+            f.write(content)
+        print(f"Generated {filepath}")
+        # Running 30 experiments per distribution using ./scripts/run_all_simulations.sh
+        # Note: The shell script will need to be updated to match the new file naming convention
+        subprocess.run(["./scripts/run_all_simulations.sh", os.path.join("experiments", filename), os.path.join(results_filepath, f"{dist}_results"), "50"])
+        
+
+if __name__ == "__main__":
+    main()
