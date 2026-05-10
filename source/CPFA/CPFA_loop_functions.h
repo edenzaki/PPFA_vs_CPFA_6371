@@ -190,6 +190,9 @@ class CPFA_loop_functions : public argos::CLoopFunctions
       
                 vector<size_t>		ForageList;
 		argos::CVector2 NestPosition;
+
+		argos::Real percentCollected;
+		argos::Real timeIntervalForRecording;
 	private:
 
 		/* private helper functions */

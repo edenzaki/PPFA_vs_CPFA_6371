@@ -44,7 +44,9 @@ CPFA_loop_functions::CPFA_loop_functions() :
 	SearchRadiusSquared((4.0 * FoodRadius) * (4.0 * FoodRadius)),
 	NumDistributedFood(0),
 	score(0),
-	PrintFinalScore(0)
+	PrintFinalScore(0),
+	percentCollected(0.1),
+	timeIntervalForRecording(0.0)
 {}
 
 void CPFA_loop_functions::Init(argos::TConfigurationNode &node) {	
@@ -85,6 +87,9 @@ void CPFA_loop_functions::Init(argos::TConfigurationNode &node) {
     argos::GetNodeAttribute(settings_node, "NestRadius", NestRadius);
 	argos::GetNodeAttribute(settings_node, "NestElevation", NestElevation);
     argos::GetNodeAttribute(settings_node, "NestPosition", NestPosition);
+		// pheromone sharing percentage collected
+	argos::GetNodeAttributeOrDefault(settings_node, "percentCollected",                  percentCollected, 0.1);
+	argos::GetNodeAttributeOrDefault(settings_node, "TimeIntervalForRecording",         timeIntervalForRecording, 0.0);
     FoodRadiusSquared = FoodRadius*FoodRadius;
 
     //Number of distributed foods
@@ -154,7 +159,8 @@ void CPFA_loop_functions::Reset() {
     MaxSimCounter = SimCounter;
     SimCounter = 0;
     score = 0;
-   
+    percentCollected = 0.1;
+	timeIntervalForRecording = 0.0;   
     FoodList.clear();
     CollectedFoodList.clear();
     FoodColoringList.clear();
@@ -215,6 +221,16 @@ void CPFA_loop_functions::PostStep() {
 	// 	// discard
 	// 	printf("SHOULD DISCARD");
 	// }
+	// Record the current time when 10%, 20%, ..., 100% of the food has been collected
+	size_t foodCollected = FoodItemCount - FoodList.size();
+	if(foodCollected >= percentCollected * FoodItemCount) {
+		double currentTime = getSimTimeInSeconds();
+		double timeInSeconds = currentTime - timeIntervalForRecording; // Time since last recording
+		// random_seed,milestone_percent,time_interval,cumulative_time,food_distribution,algorithm_mode,num_robots,total_food
+		printf("%lu, %.2f, %f, %f, %ld, %d, %lu, %lu\n", RandomSeed, percentCollected*100, timeInSeconds, currentTime, FoodDistribution, 0, Num_robots, foodCollected);
+		timeIntervalForRecording = currentTime;
+		percentCollected += 0.1;
+	}
 }
 
 bool CPFA_loop_functions::IsExperimentFinished() {
@@ -246,11 +262,17 @@ bool CPFA_loop_functions::IsExperimentFinished() {
 }
 
 void CPFA_loop_functions::PostExperiment() {
-	  
-     printf("%f, %f, %lu\n", score, getSimTimeInSeconds(), RandomSeed);
+	
+	// total percent collected, time in minutes, random seed
+	size_t foodCollected = FoodItemCount - FoodList.size();
+	percentCollected = (Real)(FoodItemCount - FoodList.size()) / (Real)FoodItemCount;
+	double currentTime = getSimTimeInSeconds();
+	double timeInSeconds = currentTime - timeIntervalForRecording; // Time since last recording
+    printf("%lu, %.2f, %f, %f, %ld, %d, %lu, %lu\n", RandomSeed, percentCollected*100, timeInSeconds, currentTime, FoodDistribution, 0, Num_robots, foodCollected);
+	//printf("%f, %f, %lu\n", score, getSimTimeInSeconds(), RandomSeed);
 	 float fpts = score/(getSimTimeInSeconds()/60);
-	 printf("food per tick/ min: %f \n", fpts);
-	 printf("NestPosition (%f , %f): \n" , NestPosition.GetX(), NestPosition.GetY());
+	 printf("food/ min: %f \n", fpts);
+	 //printf("NestPosition (%f , %f): \n" , NestPosition.GetX(), NestPosition.GetY());
 	 printFoodLocation();
        
                   

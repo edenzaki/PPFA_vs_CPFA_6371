@@ -99,25 +99,23 @@ void CPFA_controller::ControlStep() {
 	switch(CPFA_state) {
 		case DEPARTING: 
 		  m_pcLEDs->SetAllColors(CColor::BLUE); // departing state is blue
+		  TrailColor = CColor::BLUE;
 			break;
 		case SEARCHING: // searching state is green
 			m_pcLEDs->SetAllColors(CColor::GREEN);
+			TrailColor = CColor::GREEN;
 			break;
 		case RETURNING: // returning state is red
 			m_pcLEDs->SetAllColors(CColor::RED);
+			TrailColor = CColor::RED;
 			break;
 		case SURVEYING: // surveying state is yellow
 			m_pcLEDs->SetAllColors(CColor::YELLOW);
-			break;
-		case SHARING: // sharing state is cyan (flashing)
-			if((SimulationTick() % 10) < 5) {
-				m_pcLEDs->SetAllColors(CColor::CYAN);
-			} else {
-				m_pcLEDs->SetAllColors(CColor::BLACK);
-			}
+			TrailColor = CColor::YELLOW;
 			break;
 		default: // default trail color is orange
 			m_pcLEDs->SetAllColors(CColor::ORANGE);
+			TrailColor = CColor::ORANGE;
 	}
 
 	// Add line so we can draw the trail at robot height
@@ -557,7 +555,7 @@ void CPFA_controller::PheromoneSharing() {
 				     << " at distance " << argos::Distance(GetPosition(), otherPos2d) << endl;
 				MessageType message;
 				message.trail = SiteFidelityPosition;
-				message.strength = LoopFunctions->RateOfLayingPheromone;
+				message.strength = ResourceDensity;
 				message.decayRate = LoopFunctions->RateOfPheromoneDecay;
 				message.timestamp = LoopFunctions->getSimTimeInSeconds();
 				LoopFunctions->SendMessage(message, targetMailbox);
