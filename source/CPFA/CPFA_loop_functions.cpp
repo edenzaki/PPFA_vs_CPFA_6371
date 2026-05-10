@@ -214,6 +214,13 @@ void CPFA_loop_functions::PreStep() {
 
 void CPFA_loop_functions::PostStep() {
 	// nothing... yet...
+	// using this function for the decay of pheromone sharing 
+	// float currentStrength = message.strength * exp(-message.decayRate * 
+    // (getSimTimeInSeconds() - message.timestamp));
+	// if(currentStrength < 0.001) {
+	// 	// discard
+	// 	printf("SHOULD DISCARD");
+	// }
 	// Record the current time when 10%, 20%, ..., 100% of the food has been collected
 	size_t foodCollected = FoodItemCount - FoodList.size();
 	if(foodCollected >= percentCollected * FoodItemCount) {
@@ -733,5 +740,33 @@ void CPFA_loop_functions::printFoodLocation(){
 		}
 	}
 	printf("departing: %i, searching: %i, returning: %i, surveying: %i \n", a,b,c,d);
+}
+
+
+void CPFA_loop_functions::DecayAndPruneMailbox(MessageQueue<MessageType>& mailbox, size_t robotID, argos::Real currentTime) {
+    // anything not getting pruned
+    vector<MessageType> surviving;
+    
+    // Drain entire mailbox
+    while(!mailbox.empty(robotID)) {
+        MessageType msg = mailbox.receive(robotID);
+        
+        argos::Real currentStrength = msg.strength * exp(-msg.decayRate * (currentTime - msg.timestamp));
+        // if below threshold discard msg
+        if(currentStrength >= 0.001) {
+            msg.strength = currentStrength;   // update to current strength
+            msg.timestamp = currentTime;      // reset timestamp to now
+            surviving.push_back(msg);
+        }
+        else{
+			// if I discard msg
+			printf("KILLED MSG \n"); 
+		}
+    }
+    
+    // Put remaining messages back
+    for(MessageType& msg : surviving) {
+        mailbox.send(msg, robotID);
+    }
 }
 REGISTER_LOOP_FUNCTIONS(CPFA_loop_functions, "CPFA_loop_functions")
