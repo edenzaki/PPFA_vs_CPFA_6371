@@ -225,6 +225,8 @@ def main():
 
     output_dir = "results/"
 
+    # Generate all XML files first
+    experiment_args = []
     for dist in distributions:
         content = generate_xml_content(dist)
         filename = f"CPFA_Pheromone_Sharing_{dist}_256_10x10.xml"
@@ -233,9 +235,22 @@ def main():
         with open(filepath, 'w') as f:
             f.write(content)
         print(f"Generated {filepath}")
-        # Running 30 experiments per distribution using ./scripts/run_all_simulations.sh
-        # Note: The shell script will need to be updated to match the new file naming convention
-        subprocess.run(["./scripts/run_all_simulations.sh", os.path.join("experiments", filename), os.path.join(results_filepath, f"{dist}_results"), "50"])
+        experiment_args.append((
+            os.path.join("experiments", filename),
+            os.path.join(results_filepath, f"{dist}_results"),
+        ))
+
+    # Launch all simulations in parallel
+    print("Starting all simulations in parallel...")
+    processes = [
+        subprocess.Popen(["./scripts/run_all_simulations.sh", exp_file, results_path, "50"])
+        for exp_file, results_path in experiment_args
+    ]
+
+    # Wait for all to complete
+    for proc in processes:
+        proc.wait()
+    print("All simulations completed.")
         
 
 if __name__ == "__main__":

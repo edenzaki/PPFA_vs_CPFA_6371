@@ -568,14 +568,14 @@ void CPFA_controller::PheromoneSharing() {
 				LoopFunctions->SendMessage(message, targetMailbox);
 
 				//update pheromone sharing information
-				if(ResourceDensity <= LoopFunctions->RateOfPheromoneDecay * (1 + share_count)){
+				if(ResourceDensity <= 0){
 					ResourceDensity = 0;
 					TrailToShare.clear();  
 					SharedWithID.clear();
 					share_count = 0;
 					break;
 				}else{
-					ResourceDensity -= (LoopFunctions->RateOfPheromoneDecay * (1 + share_count)); // Reduce the strength of the pheromone trail after sharing (this models the idea that sharing information reduces the amount of information you have)
+					ResourceDensity = ResourceDensity * exp(-LoopFunctions->RateOfPheromoneDecay * (1 + share_count)); // Reduce the strength of the pheromone trail after sharing (this models the idea that sharing information reduces the amount of information you have)
 				}
 				//LoopFunctions->DecayAndPruneMailbox(LoopFunctions->getMessageQueue(), GetRobotID(), LoopFunctions->getSimTimeInSeconds());
 
@@ -589,9 +589,11 @@ void CPFA_controller::PheromoneSharing() {
 	else if(LoopFunctions->IsMessageAvailable(GetRobotID()) && !IsHoldingFood()) {
 		// Receive all messages and follow the strongest one (in case there are multiple messages, which should be rare since robots only share with one other robot at a time)
 		MessageType message;
+		MessageType strongestMessage;
 		while(LoopFunctions->IsMessageAvailable(GetRobotID())) {
 			message = LoopFunctions->ReceiveMessage(GetRobotID());
 			if(message.strength > ResourceDensity) {
+				strongestMessage = message;
 				ResourceDensity = message.strength;
 				SiteFidelityPosition = message.trail;
 			}
@@ -600,25 +602,26 @@ void CPFA_controller::PheromoneSharing() {
 		//cout << "Robot " << GetId() << " (" << GetRobotID() << ") received pheromone trail to follow at " << message.trail.GetX() << ", " << message.trail.GetY() << endl;
 		
 		// Drop what we're doing and head directly to the trail destination with some probability based on the strength of the message (which is based on the resource density at the time of sharing)
-		argos::Real poissonCDF_sFollowRate = GetPoissonCDF(message.strength, LoopFunctions->RateOfSiteFidelity);
+		argos::Real poissonCDF_sFollowRate = GetPoissonCDF(strongestMessage.strength, LoopFunctions->RateOfSiteFidelity);
 	    argos::Real r2 = RNG->Uniform(argos::CRange<argos::Real>(0.0, 0.05));
 		
 		cout << "Poisson CDF for site fidelity: " << poissonCDF_sFollowRate << ", random number: " << r2 << endl;
 		if(poissonCDF_sFollowRate > r2) {
-			SiteFidelityPosition = message.trail;
+			cout << "Robot " << GetId() << " (" << GetRobotID() << ") received pheromone trail to follow at " << strongestMessage.trail.GetX() << ", " << strongestMessage.trail.GetY() << endl;
+			SiteFidelityPosition = strongestMessage.trail;
 			isInformed = true;
 			isUsingPheromone = true;
 			isUsingSiteFidelity = false;
 			SetIsHeadingToNest(false);
-			SetTarget(message.trail);
+			SetTarget(strongestMessage.trail);
 			CPFA_state = DEPARTING;
-			TrailToShare.push_back(message.trail);
+			TrailToShare.push_back(strongestMessage.trail);
 			survey_count = 0;
 
 			// Draw a line from this robot to the trail destination it just received
 			const argos::Real msgRayHeight = 0.15;
 			argos::CVector3 fromPos(GetPosition().GetX(), GetPosition().GetY(), msgRayHeight);
-			argos::CVector3 toPos(message.trail.GetX(), message.trail.GetY(), msgRayHeight);
+			argos::CVector3 toPos(strongestMessage.trail.GetX(), strongestMessage.trail.GetY(), msgRayHeight);
 			LoopFunctions->PheromoneShared.push_back(argos::CRay3(fromPos, toPos));
 			LoopFunctions->PheromoneSharedColor.push_back(argos::CColor::MAGENTA);
 		}
