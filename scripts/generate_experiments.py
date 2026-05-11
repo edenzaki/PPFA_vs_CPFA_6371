@@ -228,7 +228,7 @@ def main():
     for dist in distributions:
         content = generate_xml_content(dist)
         filename = f"CPFA_Pheromone_Sharing_{dist}_256_10x10.xml"
-        filepath = os.path.join(output_dir, filename)
+        filepath = os.path.join("experiments", filename)
         results_filepath = os.path.join(output_dir, f"{dist}/PPSA/")
         with open(filepath, 'w') as f:
             f.write(content)

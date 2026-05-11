@@ -54,6 +54,8 @@ class CPFA_controller : public BaseController {
 		std::vector<argos::CVector2> TrailToFollow; // For following a shared pheromone trail
 		std::vector<argos::CRay3>    MyTrail; // for drawing the trail to the target
 		argos::CVector2 PheromoneShared; // position of the shared pheromone
+		std::map<std::string, bool> SharedWithID; // IDs of robots this robot has shared with (to prevent sharing the same pheromone trail with the same robot multiple times)
+		size_t share_count;
 
 		/* robot position variables */
 		argos::CVector2 SiteFidelityPosition;
