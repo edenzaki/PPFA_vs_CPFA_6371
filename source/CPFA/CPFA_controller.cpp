@@ -21,8 +21,10 @@ CPFA_controller::CPFA_controller() :
         startTime(0),
     m_pcLEDs(NULL),
         updateFidelity(false),
-    RobotID(0)
+    RobotID(0),
+	share_count(0)
 {
+	SharedWithID.clear();
 }
 
 void CPFA_controller::Init(argos::TConfigurationNode &node) {
@@ -45,6 +47,7 @@ void CPFA_controller::Init(argos::TConfigurationNode &node) {
 
 	argos::CVector2 p(GetPosition());
 	SetStartPosition(argos::CVector3(p.GetX(), p.GetY(), 0.0));
+	share_count = 0;
 	
 	FoodDistanceTolerance *= FoodDistanceTolerance;
 	SetIsHeadingToNest(true);
@@ -296,8 +299,7 @@ size_t CPFA_controller::GetRobotID() const {
 
 void CPFA_controller::Departing()
 {
-	// pruning and decaying mailboxes
-	LoopFunctions->DecayAndPruneMailbox(LoopFunctions->getMessageQueue(), GetRobotID(), LoopFunctions->getSimTimeInSeconds());
+	SetHoldingFood(); // Check if we are holding food and update state variable accordingly
 
      //LOG<<"Departing..."<<endl;
 	    argos::Real distanceToTarget = (GetPosition() - GetTarget()).Length();
@@ -365,14 +367,13 @@ void CPFA_controller::Departing()
 void CPFA_controller::Searching() {
  //LOG<<"Searching..."<<endl;
 	// "scan" for food only every half of a second
-	if((SimulationTick() % (SimulationTicksPerSecond() / 2)) == 0) {
+	//if((SimulationTick() % (SimulationTicksPerSecond() / 2)) == 0) {
 		SetHoldingFood();
-	}
+	//}
 	// When not carrying food, calculate movement.
 	if(IsHoldingFood() == false) {
 		   argos::CVector2 distance = GetPosition() - GetTarget();
 		   argos::Real     random   = RNG->Uniform(argos::CRange<argos::Real>(0.0, 1.0));
-		   PheromoneSharing(); // Check if there are pheromones to share and if there are nearby robots to share with
      
      // If we reached our target search location, set a new one. The 
      // new search location calculation is different based on whether
@@ -437,6 +438,7 @@ void CPFA_controller::Searching() {
           */
           SetIsHeadingToNest(false);
           SetTarget(turn_vector + GetPosition());
+		  
          }
          // informed search
          else{
@@ -534,13 +536,17 @@ void CPFA_controller::Surveying() {
 
 void CPFA_controller::PheromoneSharing() {
 	// Check if there are pheromones to share and if there are nearby robots to share with
-	if(IsHoldingFood() && !TrailToShare.empty() && !hasMidRouteShared) { // REFACTOR: It should be able to share the trail to more than one robot, but we need to define decay of the shared location per robot or level, look at PoissonCDF for laying pheromone and maybe add a separate one for sharing pheromone. For now, just share to one robot and then don't share again until the next time it picks up food.
+	if(IsHoldingFood() && !TrailToShare.empty()) { 
 		// Check for nearby robots within 1 meter
 		argos::CSpace::TMapPerType& footbots = LoopFunctions->GetSpace().GetEntitiesByType("foot-bot");
 		argos::CSpace::TMapPerType::iterator it;
 		for(it = footbots.begin(); it != footbots.end(); ++it) {
 			argos::CFootBotEntity& footBot = *argos::any_cast<argos::CFootBotEntity*>(it->second);
 			if(footBot.GetId() == GetId()) continue; // skip self
+			if(SharedWithID.find(footBot.GetId()) != SharedWithID.end()){
+				//cout << "Already shared with robot " << footBot.GetId() << " before, skipping." << endl;
+				continue; // skip the robot we just shared with (only share with one robot at a time)
+			}
 			// GetEmbodiedEntity().GetOriginAnchor().Position gives a CVector3
 			argos::CVector3 otherPos3d = footBot.GetEmbodiedEntity().GetOriginAnchor().Position;
 			argos::CVector2 otherPos2d(otherPos3d.GetX(), otherPos3d.GetY());
@@ -549,40 +555,75 @@ void CPFA_controller::PheromoneSharing() {
 				CPFA_controller& other = dynamic_cast<CPFA_controller&>(
 					footBot.GetControllableEntity().GetController());
 				size_t targetMailbox = other.GetRobotID();
-				cout << "Robot " << GetId() << " Sharing pheromone trail at: " << SiteFidelityPosition.GetX() << ", " << SiteFidelityPosition.GetY()
-				     << " with robot " << footBot.GetId()
-				     << " (mailbox " << targetMailbox << ")"
-				     << " at distance " << argos::Distance(GetPosition(), otherPos2d) << endl;
+				//cout << "Robot " << GetId() << " Sharing pheromone trail at: " << SiteFidelityPosition.GetX() << ", " << SiteFidelityPosition.GetY()
+				//    <<  "with strength " << ResourceDensity
+				//	<< " with robot " << footBot.GetId()
+				//     << " (mailbox " << targetMailbox << ")"
+				//     << " at distance " << argos::Distance(GetPosition(), otherPos2d) << endl;
 				MessageType message;
 				message.trail = SiteFidelityPosition;
 				message.strength = ResourceDensity;
 				message.decayRate = LoopFunctions->RateOfPheromoneDecay;
 				message.timestamp = LoopFunctions->getSimTimeInSeconds();
 				LoopFunctions->SendMessage(message, targetMailbox);
-				hasMidRouteShared = true;
-				break; // one share per return trip
+
+				//update pheromone sharing information
+				if(ResourceDensity <= LoopFunctions->RateOfPheromoneDecay * (1 + share_count)){
+					ResourceDensity = 0;
+					TrailToShare.clear();  
+					SharedWithID.clear();
+					share_count = 0;
+					break;
+				}else{
+					ResourceDensity -= (LoopFunctions->RateOfPheromoneDecay * (1 + share_count)); // Reduce the strength of the pheromone trail after sharing (this models the idea that sharing information reduces the amount of information you have)
+				}
+				//LoopFunctions->DecayAndPruneMailbox(LoopFunctions->getMessageQueue(), GetRobotID(), LoopFunctions->getSimTimeInSeconds());
+
+				//hasMidRouteShared = true;
+				SharedWithID[footBot.GetId()] = true;
+				share_count++;
+				break;
 			}
 		}
 	}
 	else if(LoopFunctions->IsMessageAvailable(GetRobotID()) && !IsHoldingFood()) {
-		MessageType message = LoopFunctions->ReceiveMessage(GetRobotID());
-		cout << "Robot " << GetId() << " (" << GetRobotID() << ") received pheromone trail to follow at " << message.trail.GetX() << ", " << message.trail.GetY() << endl;
-		isUsingPheromone = true;
-		// Drop what we're doing and head directly to the trail destination
-		SiteFidelityPosition = message.trail;
-		isInformed = true;
-		isUsingSiteFidelity = false;
-		SetIsHeadingToNest(false);
-		SetTarget(message.trail);
-		CPFA_state = DEPARTING;
-		survey_count = 0;
+		// Receive all messages and follow the strongest one (in case there are multiple messages, which should be rare since robots only share with one other robot at a time)
+		MessageType message;
+		while(LoopFunctions->IsMessageAvailable(GetRobotID())) {
+			message = LoopFunctions->ReceiveMessage(GetRobotID());
+			if(message.strength > ResourceDensity) {
+				ResourceDensity = message.strength;
+				SiteFidelityPosition = message.trail;
+			}
+		}
+		//MessageType message = LoopFunctions->ReceiveMessage(GetRobotID());
+		//cout << "Robot " << GetId() << " (" << GetRobotID() << ") received pheromone trail to follow at " << message.trail.GetX() << ", " << message.trail.GetY() << endl;
+		
+		// Drop what we're doing and head directly to the trail destination with some probability based on the strength of the message (which is based on the resource density at the time of sharing)
+		argos::Real poissonCDF_sFollowRate = GetPoissonCDF(message.strength, LoopFunctions->RateOfSiteFidelity);
+	    argos::Real r2 = RNG->Uniform(argos::CRange<argos::Real>(0.0, 0.05));
+		
+		cout << "Poisson CDF for site fidelity: " << poissonCDF_sFollowRate << ", random number: " << r2 << endl;
+		if(poissonCDF_sFollowRate > r2) {
+			SiteFidelityPosition = message.trail;
+			isInformed = true;
+			isUsingPheromone = true;
+			isUsingSiteFidelity = false;
+			SetIsHeadingToNest(false);
+			SetTarget(message.trail);
+			CPFA_state = DEPARTING;
+			TrailToShare.push_back(message.trail);
+			survey_count = 0;
 
-		// Draw a line from this robot to the trail destination it just received
-		const argos::Real msgRayHeight = 0.15;
-		argos::CVector3 fromPos(GetPosition().GetX(), GetPosition().GetY(), msgRayHeight);
-		argos::CVector3 toPos(message.trail.GetX(), message.trail.GetY(), msgRayHeight);
-		LoopFunctions->PheromoneShared.push_back(argos::CRay3(fromPos, toPos));
-		LoopFunctions->PheromoneSharedColor.push_back(argos::CColor::MAGENTA);
+			// Draw a line from this robot to the trail destination it just received
+			const argos::Real msgRayHeight = 0.15;
+			argos::CVector3 fromPos(GetPosition().GetX(), GetPosition().GetY(), msgRayHeight);
+			argos::CVector3 toPos(message.trail.GetX(), message.trail.GetY(), msgRayHeight);
+			LoopFunctions->PheromoneShared.push_back(argos::CRay3(fromPos, toPos));
+			LoopFunctions->PheromoneSharedColor.push_back(argos::CColor::MAGENTA);
+		}
+
+		LoopFunctions->DecayAndPruneMailbox(LoopFunctions->getMessageQueue(), GetRobotID(), LoopFunctions->getSimTimeInSeconds());
 	}
 }
 
@@ -594,9 +635,7 @@ void CPFA_controller::PheromoneSharing() {
  *****/
 void CPFA_controller::Returning() {
  //LOG<<"Returning..."<<endl;
-	//SetHoldingFood();
-
-	PheromoneSharing(); // Check if there are pheromones to share and if there are nearby robots to share with
+	SetHoldingFood();
 
 	// Are we there yet? (To the nest, that is.)
 	if(IsInTheNest()) {
@@ -659,6 +698,7 @@ void CPFA_controller::Returning() {
 
 	isGivingUpSearch = false;
 	hasMidRouteShared = false;
+	SharedWithID.clear(); // reset per-trip sharing so we can share with a new unique robot next trip
 	CPFA_state = DEPARTING;   
         isHoldingFood = false; 
         travelingTime+=SimulationTick()-startTime;//qilu 10/22
@@ -668,6 +708,7 @@ void CPFA_controller::Returning() {
 	// Take a small step towards the nest so we don't overshoot by too much is we miss it
     else 
     {
+		PheromoneSharing(); // Check if there are pheromones to share and if there are nearby robots to share with
         if(IsAtTarget())
         {
         //argos::LOG<<"heading to true in returning"<<endl;
@@ -717,6 +758,7 @@ void CPFA_controller::SetRandomSearchLocation() {
 		
 	SetIsHeadingToNest(true); // Turn off error for this
 	SetTarget(argos::CVector2(x, y));
+	
 }
 
 /*****

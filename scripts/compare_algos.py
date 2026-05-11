@@ -146,6 +146,100 @@ def plot_highest_milestone(distribution: str,
     print(f"Saved {out_prefix}.{{png,pdf,svg}}")
 
 
+def plot_highest_milestone_combined(
+        distributions: list[tuple[str, str]],
+        baseline: str = "CPFA",
+        algorithm: str = "PPSA",
+) -> None:
+    """Box-plot comparing highest milestone reached across all distributions in one figure.
+
+    Parameters
+    ----------
+    distributions:
+        List of ``(distribution_key, display_label)`` tuples, e.g.
+        ``[("cluster_distribution", "Cluster"), ...]``.
+    baseline / algorithm:
+        Algorithm labels used to load data and style the boxes.
+    """
+    frames = []
+    for dist_key, dist_label in distributions:
+        data = load_highest_milestone_data(dist_key, baseline, algorithm)
+        data['Distribution'] = dist_label
+        frames.append(data)
+    combined = pd.concat(frames, ignore_index=True)
+
+    sns.set_theme(style='whitegrid')
+    sns.set_context('paper', font_scale=2.2)
+    plt.rcParams.update({
+        'font.size': 16,
+        'axes.titlesize': 24,
+        'axes.labelsize': 18,
+        'xtick.labelsize': 16,
+        'ytick.labelsize': 16,
+        'legend.fontsize': 16,
+    })
+
+    dist_labels = [d[1] for d in distributions]
+    hue_order = [baseline, algorithm]
+    palette = [PALETTE.get(baseline, '#4C72B0'), PALETTE.get(algorithm, '#C0392B')]
+
+    fig, ax = plt.subplots(figsize=(10, 7))
+
+    sns.boxplot(
+        data=combined,
+        x='Distribution',
+        y='highest_milestone',
+        hue='Experiment Type',
+        order=dist_labels,
+        hue_order=hue_order,
+        palette=palette,
+        width=0.45,
+        fliersize=4,
+        linewidth=1.1,
+        dodge=True,
+        showfliers=True,
+        ax=ax,
+    )
+
+    # significance brackets for each distribution
+    box_width = 0.45 / 2
+    offsets = np.array([-box_width / 2, box_width / 2])
+    y_max_global = combined['highest_milestone'].max()
+    ax.set_ylim(top=y_max_global * 1.25)
+
+    for tick_idx, (dist_key, dist_label) in enumerate(distributions):
+        sub = combined[combined['Distribution'] == dist_label]
+        b_vals = sub[sub['Experiment Type'] == baseline]['highest_milestone'].values
+        a_vals = sub[sub['Experiment Type'] == algorithm]['highest_milestone'].values
+        if len(b_vals) == 0 or len(a_vals) == 0:
+            continue
+        _, p = ttest_ind(b_vals, a_vals, equal_var=False)
+        y_top = sub['highest_milestone'].max()
+        gap = (ax.get_ylim()[1] - ax.get_ylim()[0]) * 0.06
+        draw_bracket(
+            ax,
+            tick_idx + offsets[0],
+            tick_idx + offsets[1],
+            y_top + gap,
+            sig_label(p),
+            fontsize=10,
+        )
+
+    ax.set_ylabel('Highest Milestone Reached (%)', fontsize=18)
+    ax.set_xlabel('Distribution', fontsize=18)
+    ax.set_title('Highest Milestone Reached by Distribution', fontsize=20)
+    ax.legend(title='', loc='upper left', borderaxespad=0.5)
+
+    plt.tight_layout()
+    out_dir = "results"
+    out_prefix = os.path.join(out_dir, "highest_milestone_combined")
+    fig.savefig(f"{out_prefix}.png", dpi=300, bbox_inches='tight')
+    fig.savefig(f"{out_prefix}.pdf", bbox_inches='tight')
+    fig.savefig(f"{out_prefix}.svg", bbox_inches='tight')
+    plt.close(fig)
+    print(f"Saved {out_prefix}.{{png,pdf,svg}}")
+
+
 def plot_distribution(distribution: str,
                       distribution_label: str,
                       baseline: str = "CPFA",
@@ -310,8 +404,66 @@ def main(baseline: str = "CPFA", algorithm: str = "PPSA", distribution: str = "c
         print(f"LaTeX generation skipped: {e}")
 
 
+def latex_highest_milestone_combined(
+        distributions: list[tuple[str, str]],
+        baseline: str = "CPFA",
+        algorithm: str = "PPSA",
+) -> None:
+    """Print a LaTeX table with the average highest milestone for each distribution."""
+    rows = []
+    for dist_key, dist_label in distributions:
+        data = load_highest_milestone_data(dist_key, baseline, algorithm)
+        b_vals = data[data['Experiment Type'] == baseline]['highest_milestone'].values
+        a_vals = data[data['Experiment Type'] == algorithm]['highest_milestone'].values
+        _, p = ttest_ind(b_vals, a_vals, equal_var=False)
+        p_fmt = (
+            f"{p:.4f}" if p >= 0.05
+            else f"\\textbf{{{p:.4f}}}" if p >= 0.0001
+            else "\\textbf{<0.0001}"
+        )
+        rows.append({
+            "Distribution": dist_label,
+            f"{baseline} Mean (\\%)": f"{b_vals.mean():.2f}",
+            f"{algorithm} Mean (\\%)": f"{a_vals.mean():.2f}",
+            f"p-value ({baseline} vs {algorithm})": p_fmt,
+        })
+
+    df = pd.DataFrame(rows)
+    latex_str = df.to_latex(
+        index=False,
+        column_format="|l|c|c|c|",
+        escape=False,
+        caption=(
+            f"Average highest milestone reached per distribution "
+            f"({baseline} vs {algorithm})"
+        ),
+        label="tab:highest_milestone_combined",
+    )
+    print(latex_str)
+
+
 if __name__ == "__main__":
     main(baseline="CPFA", algorithm="PPSA", distribution="cluster_distribution")
     main(baseline="CPFA", algorithm="PPSA", distribution="powerlaw_distribution")
     main(baseline="CPFA", algorithm="PPSA", distribution="random_distribution")
+
+    plot_highest_milestone_combined(
+        distributions=[
+            ("cluster_distribution",  "Cluster"),
+            ("powerlaw_distribution", "Powerlaw"),
+            ("random_distribution",   "Random"),
+        ],
+        baseline="CPFA",
+        algorithm="PPSA",
+    )
+
+    latex_highest_milestone_combined(
+        distributions=[
+            ("cluster_distribution",  "Cluster"),
+            ("powerlaw_distribution", "Powerlaw"),
+            ("random_distribution",   "Random"),
+        ],
+        baseline="CPFA",
+        algorithm="PPSA",
+    )
 
