@@ -22,7 +22,8 @@ CPFA_controller::CPFA_controller() :
     m_pcLEDs(NULL),
         updateFidelity(false),
     RobotID(0),
-	share_count(0)
+	share_count(0),
+	messageFlashCounter(0)
 {
 	SharedWithID.clear();
 }
@@ -98,39 +99,45 @@ void CPFA_controller::ControlStep() {
 	}
 	*/
 
-	// Set trail color based on current state
-	switch(CPFA_state) {
-		case DEPARTING: 
-		  m_pcLEDs->SetAllColors(CColor::BLUE); // departing state is blue
-		  TrailColor = CColor::BLUE;
-			break;
-		case SEARCHING: // searching state is green
-			m_pcLEDs->SetAllColors(CColor::GREEN);
-			TrailColor = CColor::GREEN;
-			break;
-		case RETURNING: // returning state is red
-			m_pcLEDs->SetAllColors(CColor::RED);
-			TrailColor = CColor::RED;
-			break;
-		case SURVEYING: // surveying state is yellow
-			m_pcLEDs->SetAllColors(CColor::YELLOW);
-			TrailColor = CColor::YELLOW;
-			break;
-		default: // default trail color is orange
-			m_pcLEDs->SetAllColors(CColor::ORANGE);
-			TrailColor = CColor::ORANGE;
-	}
 
 	// Add line so we can draw the trail at robot height
 	const argos::Real robotHeight = 0.08;
 	CVector3 position3d(GetPosition().GetX(), GetPosition().GetY(), robotHeight); 
 	CVector3 target3d(previous_position.GetX(), previous_position.GetY(), robotHeight); 
 	CRay3 targetRay(target3d, position3d); 
-	myTrail.push_back(targetRay);
-	LoopFunctions->TargetRayList.push_back(targetRay);
-	LoopFunctions->TargetRayColorList.push_back(TrailColor);
+	//myTrail.push_back(targetRay);
+	//LoopFunctions->TargetRayList.push_back(targetRay);
+	//LoopFunctions->TargetRayColorList.push_back(TrailColor);
 
 	previous_position = GetPosition();
+
+	// Handle LED flashing for message communication
+	if(messageFlashCounter > 0) {
+		messageFlashCounter--;
+		// Flash red for 0.25 seconds (8 ticks at 32 ticks/sec)
+		size_t flashDuration = 8;
+		if(messageFlashCounter % (flashDuration * 2) < flashDuration) {
+			m_pcLEDs->SetAllColors(CColor::RED);
+		} else {
+			// Return to normal state color
+			switch(CPFA_state) {
+				case DEPARTING: 
+					m_pcLEDs->SetAllColors(CColor::BLUE);
+					break;
+				case SEARCHING:
+					m_pcLEDs->SetAllColors(CColor::GREEN);
+					break;
+				case RETURNING:
+					m_pcLEDs->SetAllColors(CColor::RED);
+					break;
+				case SURVEYING:
+					m_pcLEDs->SetAllColors(CColor::YELLOW);
+					break;
+				default:
+					m_pcLEDs->SetAllColors(CColor::ORANGE);
+			}
+		}
+	}
 
 	//UpdateTargetRayList();
 	CPFA();
@@ -537,6 +544,7 @@ void CPFA_controller::Surveying() {
 void CPFA_controller::PheromoneSharing() {
 	// Check if there are pheromones to share and if there are nearby robots to share with
 	if(IsHoldingFood() && !TrailToShare.empty()) { 
+		cout << "DEBUG: Robot " << GetId() << " has food and trail to share!" << endl;
 		// Check for nearby robots within 1 meter
 		argos::CSpace::TMapPerType& footbots = LoopFunctions->GetSpace().GetEntitiesByType("foot-bot");
 		argos::CSpace::TMapPerType::iterator it;
@@ -550,7 +558,9 @@ void CPFA_controller::PheromoneSharing() {
 			// GetEmbodiedEntity().GetOriginAnchor().Position gives a CVector3
 			argos::CVector3 otherPos3d = footBot.GetEmbodiedEntity().GetOriginAnchor().Position;
 			argos::CVector2 otherPos2d(otherPos3d.GetX(), otherPos3d.GetY());
-			if(argos::Distance(GetPosition(), otherPos2d) < 1.0) {
+			argos::Real dist = argos::Distance(GetPosition(), otherPos2d);
+			cout << "DEBUG: Robot " << GetId() << " distance to " << footBot.GetId() << ": " << dist << endl;
+			if(dist < 1.0) {
 				// Retrieve the other robot's numeric mailbox ID from its controller
 				CPFA_controller& other = dynamic_cast<CPFA_controller&>(
 					footBot.GetControllableEntity().GetController());
@@ -566,6 +576,7 @@ void CPFA_controller::PheromoneSharing() {
 				message.decayRate = LoopFunctions->RateOfPheromoneDecay;
 				message.timestamp = LoopFunctions->getSimTimeInSeconds();
 				LoopFunctions->SendMessage(message, targetMailbox);
+				messageFlashCounter = 16;  // Flash for 16 ticks (0.5 seconds at 32 ticks/sec)
 
 				//update pheromone sharing information
 				if(ResourceDensity <= 0){
@@ -582,6 +593,15 @@ void CPFA_controller::PheromoneSharing() {
 				//hasMidRouteShared = true;
 				SharedWithID[footBot.GetId()] = true;
 				share_count++;
+
+				const argos::Real robotHeight = 0.08;
+				CVector3 sharingRobotPos3d(GetPosition().GetX(), GetPosition().GetY(), robotHeight);
+				CVector3 receivingRobotPos3d(otherPos2d.GetX(), otherPos2d.GetY(), robotHeight);
+				CRay3 sharingRay(sharingRobotPos3d, receivingRobotPos3d); // Create a ray from the sharing robot to the receiving robot
+				LoopFunctions->TargetRayList.push_back(sharingRay); 
+				LoopFunctions->TargetRayColorList.push_back(CColor::RED);
+				cout << "Debug: Red ray for pheromone sharing. Total rays: " << LoopFunctions->TargetRayList.size() << endl;
+
 				break;
 			}
 		}
@@ -608,6 +628,7 @@ void CPFA_controller::PheromoneSharing() {
 		cout << "Poisson CDF for site fidelity: " << poissonCDF_sFollowRate << ", random number: " << r2 << endl;
 		if(poissonCDF_sFollowRate > r2) {
 			cout << "Robot " << GetId() << " (" << GetRobotID() << ") received pheromone trail to follow at " << strongestMessage.trail.GetX() << ", " << strongestMessage.trail.GetY() << endl;
+			messageFlashCounter = 16;  // Flash for 16 ticks (0.5 seconds at 32 ticks/sec)
 			SiteFidelityPosition = strongestMessage.trail;
 			isInformed = true;
 			isUsingPheromone = true;

@@ -20,7 +20,7 @@
       </actuators>
 
       <sensors>
-        <footbot_proximity implementation="default" show_rays="true"/>
+        <footbot_proximity implementation="default" show_rays="false"/>
 
 	<positioning implementation="default"/>	
 
@@ -67,7 +67,7 @@
                 ClusterWidthY="8" 
                 DrawDensityRate="4" 
                 DrawIDs="1" 
-                DrawTargetRays="0" 
+                DrawTargetRays="1" 
                 DrawPheromoneShared="1"
                 DrawTrails="0" 
                 FoodDistribution="2" 
@@ -170,7 +170,7 @@
   <media><led id="leds"/></media>
   <!-- ****************** -->
   <!-- * Visualization * -->
-  <!-- ****************** 
+  <!-- ****************** -->
 
 
  <visualization> 
@@ -188,7 +188,6 @@
         </camera>
         <user_functions label="CPFA_qt_user_functions"/>
     </qt-opengl>
-
-  </visualization> 
 -->
+  </visualization> 
 </argos-configuration>

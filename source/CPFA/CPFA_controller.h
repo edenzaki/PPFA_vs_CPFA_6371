@@ -45,6 +45,7 @@ class CPFA_controller : public BaseController {
 	private:
   string 			controllerID;//qilu 07/26/2016
 		size_t    RobotID;
+		size_t    messageFlashCounter;  // Counter for LED flashing when sending/receiving messages
 
 		CPFA_loop_functions* LoopFunctions;
 		argos::CRandom::CRNG* RNG;
